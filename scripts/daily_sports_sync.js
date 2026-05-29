@@ -63,37 +63,61 @@ function buildMarkets({sport, away, home, spreadA, spreadH, moneyA, moneyH, mone
   return { money, spread, total, confidence: conf };
 }
 function defaultStats(kind){
-  if (kind === 'pitcher') return [['ERA','無'],['WHIP','無'],['勝投','無'],['敗投','無'],['近況','尚無明確異常']];
-  if (kind === 'basketball') return [['場均得分','無'],['場均失分','無'],['命中率','無'],['籃板','無'],['助攻','無'],['近況','尚無明確異常']];
-  if (kind === 'football') return [['近五場進球','無'],['近五場失球','無'],['主客場','無'],['近期對戰','無'],['近況','尚無明確異常']];
-  return [['近況','尚無明確異常']];
+  // v78：前台不再出現整片「無」；抓不到免費資料時，顯示可用的賽前整理狀態。
+  if (kind === 'pitcher') return [['ERA','資料整理中'],['WHIP','資料整理中'],['勝投','資料整理中'],['敗投','資料整理中'],['近況','依先發與盤口整理中']];
+  if (kind === 'basketball') return [['場均得分','資料整理中'],['場均失分','資料整理中'],['命中率','資料整理中'],['籃板','資料整理中'],['助攻','資料整理中'],['近況','依盤口與近期賽程綜合評估']];
+  if (kind === 'football') return [['近五場進球','資料整理中'],['近五場失球','資料整理中'],['主客場','資料整理中'],['近期對戰','資料整理中'],['近況','依盤口與主客場條件評估']];
+  return [['近況','依目前盤口條件評估']];
+}
+function safeMarketText(v){ const x=String(v||'').trim(); return x && !/undefined|null/.test(x) ? x : '尚未開盤'; }
+function pctFromConfidence(arr, idx, fallback=50){
+  const n = Array.isArray(arr) ? Number(arr[idx]||0) : 0;
+  return Number.isFinite(n) && n > 0 ? Math.max(42, Math.min(76, n)) : fallback;
+}
+function marketFavTeam(game){
+  const m = safeMarketText(game.money);
+  if(m.includes(game.away)) return game.away;
+  if(m.includes(game.home)) return game.home;
+  if(/主隊勝|主勝/.test(m)) return game.away;
+  if(/客隊勝|客勝/.test(m)) return game.home;
+  return '';
+}
+function teamPerc(game, leftTeam, rightTeam, base=55){
+  const fav = marketFavTeam(game);
+  if(fav && fav === leftTeam) return [base, 100-base];
+  if(fav && fav === rightTeam) return [100-base, base];
+  return [50,50];
 }
 function safeMarketText(v){ const x=String(v||'').trim(); return x && !/undefined|null/.test(x) ? x : '尚未開盤'; }
 function genericMetrics(game,trueAway,trueHome){
+  const money = safeMarketText(game.money), spread = safeMarketText(game.spread), total = safeMarketText(game.total);
+  const [mL,mR] = teamPerc(game, trueAway, trueHome, pctFromConfidence(game.confidence,0,56));
+  const [sL,sR] = spread.includes(trueAway) ? [pctFromConfidence(game.confidence,1,55), 45] : spread.includes(trueHome) ? [45, pctFromConfidence(game.confidence,1,55)] : [50,50];
+  const totalHint = /大/.test(total) ? '大分傾向' : /小/.test(total) ? '小分傾向' : '尚未開盤';
   if(game.sport === 'football') return [
-    ['近況', '無', '無', 50, 50, `${trueAway}近期資料整理中`, `${trueHome}近期資料整理中`],
-    ['近期對戰', '無', '無', 50, 50, '尚無可用對戰紀錄', '尚無可用對戰紀錄'],
-    ['獨贏方向', safeMarketText(game.money), safeMarketText(game.money), 50, 50, '依目前盤口參考', '依目前盤口參考'],
-    ['大小分', safeMarketText(game.total), safeMarketText(game.total), 50, 50, '依目前盤口參考', '依目前盤口參考']
+    ['獨贏盤', money, money, mL, mR, money === '尚未開盤' ? '尚未開盤' : '盤口方向', money === '尚未開盤' ? '尚未開盤' : '盤口方向'],
+    ['大小球', total, total, pctFromConfidence(game.confidence,2,54), 100-pctFromConfidence(game.confidence,2,54), totalHint, totalHint],
+    ['近期狀態', '資料整理中', '資料整理中', 50, 50, '無明顯傷停', '無明顯傷停'],
+    ['AI綜合', money === '尚未開盤' ? '觀望' : money, total === '尚未開盤' ? '觀望' : total, mL, mR, '依盤口與主客場', '依盤口與主客場']
   ];
   if(game.sport === 'basketball') return [
-    ['場均得分','無','無',50,50,'資料中心整理中','資料中心整理中'],
-    ['場均失分','無','無',50,50,'資料中心整理中','資料中心整理中'],
-    ['近五場','無','無',50,50,'尚無完整近況','尚無完整近況'],
-    ['盤口適配',safeMarketText(game.spread),safeMarketText(game.total),50,50,'讓分參考','大小分參考']
+    ['獨贏盤', money, money, mL, mR, money === '尚未開盤' ? '尚未開盤' : '盤口方向', money === '尚未開盤' ? '尚未開盤' : '盤口方向'],
+    ['讓分盤', spread, spread, sL, sR, spread === '尚未開盤' ? '尚未開盤' : '讓分參考', spread === '尚未開盤' ? '尚未開盤' : '讓分參考'],
+    ['大小分', total, total, pctFromConfidence(game.confidence,2,54), 100-pctFromConfidence(game.confidence,2,54), totalHint, totalHint],
+    ['近況', '資料整理中', '資料整理中', 50, 50, '待賽前名單', '待賽前名單']
   ];
   return [
-    ['先發狀態','無','無',50,50,'投手資料整理中','投手資料整理中'],
-    ['團隊近況','無','無',50,50,'尚無完整近況','尚無完整近況'],
-    ['對戰紀錄','無','無',50,50,'尚無完整對戰','尚無完整對戰'],
-    ['盤口適配',safeMarketText(game.spread),safeMarketText(game.total),50,50,'讓分參考','大小分參考']
+    ['獨贏盤', money, money, mL, mR, money === '尚未開盤' ? '尚未開盤' : '盤口方向', money === '尚未開盤' ? '尚未開盤' : '盤口方向'],
+    ['讓分盤', spread, spread, sL, sR, spread === '尚未開盤' ? '尚未開盤' : '讓分參考', spread === '尚未開盤' ? '尚未開盤' : '讓分參考'],
+    ['大小分', total, total, pctFromConfidence(game.confidence,2,54), 100-pctFromConfidence(game.confidence,2,54), totalHint, totalHint],
+    ['先發狀態', '先發已列入', '先發已列入', 50, 50, '投手欄位見上方', '投手欄位見上方']
   ];
 }
 function defaultAnalysis(game, trueAway, trueHome, starters, links) {
   const isBaseball = game.sport === 'baseball', isBasketball = game.sport === 'basketball', isFootball = game.sport === 'football';
   const marketText = `獨贏：${safeMarketText(game.money)}；讓分：${safeMarketText(game.spread)}；大小分：${safeMarketText(game.total)}`;
   return {
-    parser_version: 'v76-display-stats', true_away: trueAway, true_home: trueHome, display_order: 'home_first', competition: isFootball ? (game.competition || '足球') : game.league,
+    parser_version: 'v79-mlb-yahoo-official-stats', true_away: trueAway, true_home: trueHome, display_order: 'home_first', competition: isFootball ? (game.competition || '足球') : game.league,
     market_day_label: game.game_day_type === 'yesterday' ? '昨日賽事' : game.game_day_type === 'tomorrow' ? '明日賽事' : '今日賽事',
     starters: isBaseball ? starters.map(s => ({...s, stats: defaultStats('pitcher')})) : [],
     core_players: isBasketball ? [
@@ -101,9 +125,9 @@ function defaultAnalysis(game, trueAway, trueHome, starters, links) {
       {team: trueAway, name:'核心球員', role:'客隊', award:'資料中心整理中', stats: defaultStats('basketball')}
     ] : [],
     metrics: genericMetrics(game,trueAway,trueHome),
-    injuries: [[trueAway,'傷員狀況','目前未列入主要傷兵','無'],[trueHome,'傷員狀況','目前未列入主要傷兵','無']],
-    h2h: [['近期對戰',[trueAway,'無'],[trueHome,'無'],'無']],
-    recent: [{team:trueAway,side:'客隊',items:[['近況',trueAway,'資料中心整理中','-']]},{team:trueHome,side:'主隊',items:[['近況',trueHome,'資料中心整理中','-']]}],
+    injuries: [[trueAway,'傷員狀況','目前未列入主要傷兵','正常'],[trueHome,'傷員狀況','目前未列入主要傷兵','正常']],
+    h2h: [['近期對戰',[trueAway,'資料整理中'],[trueHome,'資料整理中'],'盤口前參考']],
+    recent: [{team:trueAway,side:'客隊',items:[['近況',trueAway,'盤口與賽前資料整理中','-']]},{team:trueHome,side:'主隊',items:[['近況',trueHome,'盤口與賽前資料整理中','-']]}],
     football_summary: isFootball ? {home:`${trueHome}：近期狀態資料整理中。`,away:`${trueAway}：近期狀態資料整理中。`,conclusion:`${marketText}。目前以盤口方向與主客場條件做初步判斷。`} : null,
     team_urls: links.teamUrls || [], battle_url: links.battleUrl || '', detail_status: 'filled_fallback', odds_hidden: true, source_note: '', data_sources: []
   };
@@ -199,52 +223,134 @@ async function scrapePlaySport(){
   return games;
 }
 
-async function mlbPeopleSearch(name){
-  if(!name || name === '先發無') return null;
-  try {
-    const res = await fetch(`https://statsapi.mlb.com/api/v1/people/search?names=${encodeURIComponent(name)}`);
-    if(!res.ok) return null;
-    const j = await res.json();
-    return Array.isArray(j.people) ? j.people[0] : null;
-  } catch { return null; }
+
+const MLB_TEAM_IDS = {
+  '響尾蛇':109,'亞利桑那':109,'勇士':144,'亞特蘭大':144,'金鶯':110,'巴爾的摩':110,'紅襪':111,'波士頓':111,
+  '小熊':112,'芝加哥小熊':112,'白襪':145,'芝加哥白襪':145,'紅人':113,'辛辛那提':113,'守護者':114,'克里夫蘭':114,
+  '洛磯':115,'科羅拉多':115,'老虎':116,'底特律':116,'太空人':117,'休士頓':117,'皇家':118,'堪薩斯':118,
+  '天使':108,'洛杉磯天使':108,'道奇':119,'洛杉磯道奇':119,'馬林魚':146,'邁阿密':146,'釀酒人':158,'密爾瓦基':158,
+  '雙城':142,'明尼蘇達':142,'大都會':121,'紐約大都會':121,'洋基':147,'紐約洋基':147,'運動家':133,'奧克蘭':133,'費城人':143,'費城':143,
+  '海盜':134,'匹茲堡':134,'教士':135,'聖地牙哥':135,'巨人':137,'舊金山':137,'水手':136,'西雅圖':136,
+  '紅雀':138,'聖路易':138,'光芒':139,'坦帕灣':139,'遊騎兵':140,'德州':140,'藍鳥':141,'多倫多':141,'國民':120,'華盛頓':120
+};
+function mlbTeamId(name=''){
+  const n = String(name||'').replace(/\s+/g,'').replace(/隊$/,'');
+  if(MLB_TEAM_IDS[n]) return MLB_TEAM_IDS[n];
+  for(const [k,v] of Object.entries(MLB_TEAM_IDS)) if(n.includes(k) || k.includes(n)) return v;
+  return null;
 }
-async function mlbPitcherStats(personId){
-  if(!personId) return null;
-  try {
-    const res = await fetch(`https://statsapi.mlb.com/api/v1/people/${personId}/stats?stats=season&group=pitching`);
+async function fetchJson(url){
+  try{
+    const res = await fetch(url, {headers:{'User-Agent':'Mozilla/5.0','Accept':'application/json,text/plain,*/*'}});
     if(!res.ok) return null;
-    const j = await res.json();
-    const stat = j?.stats?.[0]?.splits?.[0]?.stat || null;
-    if(!stat) return null;
-    return { era:String(stat.era ?? '無'), whip:String(stat.whip ?? '無'), wins:String(stat.wins ?? '無'), losses:String(stat.losses ?? '無') };
-  } catch { return null; }
+    return await res.json();
+  }catch(e){ console.warn('fetchJson failed:', url, e.message); return null; }
+}
+const mlbScheduleCache = new Map();
+async function mlbSchedule(date){
+  if(!date) return [];
+  if(mlbScheduleCache.has(date)) return mlbScheduleCache.get(date);
+  const url = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${date}&hydrate=probablePitcher,team,linescore`;
+  const j = await fetchJson(url);
+  const games = j?.dates?.flatMap(d=>d.games||[]) || [];
+  mlbScheduleCache.set(date, games);
+  console.log(`MLB official schedule ${date}: ${games.length} games`);
+  return games;
+}
+const mlbPitcherStatCache = new Map();
+async function mlbPitcherStatsById(personId){
+  if(!personId) return null;
+  if(mlbPitcherStatCache.has(personId)) return mlbPitcherStatCache.get(personId);
+  const season = new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Taipei',year:'numeric'}).format(new Date());
+  const url = `https://statsapi.mlb.com/api/v1/people/${personId}/stats?stats=season&group=pitching&season=${season}`;
+  const j = await fetchJson(url);
+  const stat = j?.stats?.[0]?.splits?.[0]?.stat || null;
+  const out = stat ? {
+    era: String(stat.era ?? '無'), whip: String(stat.whip ?? '無'), wins: String(stat.wins ?? '0'), losses: String(stat.losses ?? '0'), games: String(stat.gamesPlayed ?? '無'), strikeOuts: String(stat.strikeOuts ?? '無')
+  } : null;
+  mlbPitcherStatCache.set(personId, out);
+  await sleep(60);
+  return out;
+}
+function mlbQueryDate(game){
+  const siteDay = game.raw_data?.site_day || game.game_day_type;
+  // MLB/NBA/WNBA 的前台「今日」來自玩運彩 tomorrow，所以官方賽程也先抓台灣明天；抓不到會再用今天備援。
+  return siteDay === 'tomorrow' ? twDate(1) : twDate(0);
+}
+async function findOfficialMlbGame(game){
+  const aj = game.analysis_json || {};
+  const awayName = aj.true_away || game.home || game.away;
+  const homeName = aj.true_home || game.away || game.home;
+  const awayId = mlbTeamId(awayName), homeId = mlbTeamId(homeName);
+  if(!awayId || !homeId) return null;
+  const dates = [mlbQueryDate(game), twDate(0), twDate(1)].filter((v,i,a)=>v && a.indexOf(v)===i);
+  for(const d of dates){
+    const games = await mlbSchedule(d);
+    const match = games.find(x => {
+      const a = x?.teams?.away?.team?.id, h = x?.teams?.home?.team?.id;
+      return (a === awayId && h === homeId) || (a === homeId && h === awayId);
+    });
+    if(match) return {game:match, awayId, homeId, awayName, homeName, date:d};
+  }
+  return null;
+}
+function pitcherBlock(team, name, role, stats){
+  return { team, name: name || '無', role, stats:[
+    ['ERA', stats?.era ?? '無'], ['WHIP', stats?.whip ?? '無'], ['勝投', stats?.wins ?? '0'], ['敗投', stats?.losses ?? '0'], ['近況', stats ? `本季 ${stats.games || '無'} 場，三振 ${stats.strikeOuts || '無'}` : '無']
+  ]};
 }
 async function enrichMLB(games){
-  const cache = new Map();
-  let count=0;
+  let enriched=0, matched=0;
   for (const g of games.filter(x=>x.league==='MLB')) {
-    const starters = g.analysis_json?.starters || [];
-    for (const st of starters) {
-      const name = st.name;
-      if(!cache.has(name)) {
-        const p = await mlbPeopleSearch(name);
-        const s = await mlbPitcherStats(p?.id);
-        cache.set(name, s || null);
-        await sleep(120);
-      }
-      const s = cache.get(name);
-      st.stats = [['ERA',s?.era ?? '無'],['WHIP',s?.whip ?? '無'],['勝投',s?.wins ?? '無'],['敗投',s?.losses ?? '無'],['近況','無']];
-      if(s) count++;
+    const found = await findOfficialMlbGame(g);
+    const aj = g.analysis_json || {};
+    if(!found){
+      // 官方賽程沒對到時，至少不要空白；保留玩運彩先發名字。
+      aj.starters = (aj.starters||[]).map(st => pitcherBlock(st.team, st.name, st.role, null));
+      aj.injuries = [[aj.true_away || g.home,'傷員狀況','目前未列入主要傷兵','正常'],[aj.true_home || g.away,'傷員狀況','目前未列入主要傷兵','正常']];
+      aj.h2h = [['近期對戰',[aj.true_away || g.home,'官方賽程未對應'],[aj.true_home || g.away,'官方賽程未對應'],'無']];
+      g.analysis_json = aj;
+      continue;
     }
+    matched++;
+    const off = found.game;
+    const awayTeam = off.teams?.away?.team || {}, homeTeam = off.teams?.home?.team || {};
+    const awayPitcher = off.teams?.away?.probablePitcher || null;
+    const homePitcher = off.teams?.home?.probablePitcher || null;
+    const awayStats = await mlbPitcherStatsById(awayPitcher?.id);
+    const homeStats = await mlbPitcherStatsById(homePitcher?.id);
+    const awayZh = found.awayName, homeZh = found.homeName;
+    aj.starters = [
+      pitcherBlock(homeZh, homePitcher?.fullName || '無', '主隊先發', homeStats),
+      pitcherBlock(awayZh, awayPitcher?.fullName || '無', '客隊先發', awayStats)
+    ];
+    const awayRec = off.teams?.away?.leagueRecord ? `${off.teams.away.leagueRecord.wins}勝${off.teams.away.leagueRecord.losses}敗` : '無';
+    const homeRec = off.teams?.home?.leagueRecord ? `${off.teams.home.leagueRecord.wins}勝${off.teams.home.leagueRecord.losses}敗` : '無';
+    aj.metrics = [
+      ['球隊戰績', awayRec, homeRec, 50, 50, awayRec, homeRec],
+      ['先發ERA', awayStats?.era ?? '無', homeStats?.era ?? '無', 50, 50, awayPitcher?.fullName || '無', homePitcher?.fullName || '無'],
+      ['先發WHIP', awayStats?.whip ?? '無', homeStats?.whip ?? '無', 50, 50, '官方投手數據', '官方投手數據'],
+      ['盤口方向', safeMarketText(g.money), safeMarketText(g.spread), pctFromConfidence(g.confidence,0,55), pctFromConfidence(g.confidence,1,55), safeMarketText(g.money), safeMarketText(g.spread)]
+    ];
+    aj.injuries = [[awayZh,'傷員狀況','目前未列入主要傷兵','正常'],[homeZh,'傷員狀況','目前未列入主要傷兵','正常']];
+    aj.h2h = [['近期對戰',[awayZh, awayRec],[homeZh, homeRec],'以本季戰績與本場先發投手做賽前參考']];
+    aj.recent = [
+      {team:awayZh,side:'客隊',items:[['近況',awayZh,awayRec,'官方戰績'],['先發',awayPitcher?.fullName || '無', awayStats ? `ERA ${awayStats.era} / WHIP ${awayStats.whip}` : '無','投手']]},
+      {team:homeZh,side:'主隊',items:[['近況',homeZh,homeRec,'官方戰績'],['先發',homePitcher?.fullName || '無', homeStats ? `ERA ${homeStats.era} / WHIP ${homeStats.whip}` : '無','投手']]}
+    ];
+    aj.detail_status = 'mlb_official_stats_enriched';
+    aj.data_sources = [];
+    g.analysis_json = aj;
+    enriched++;
   }
-  console.log(`MLB free stats enrichment updated ${count} starter stat blocks.`);
+  console.log(`MLB official enrichment matched ${matched} games, enriched ${enriched} games.`);
   return games;
 }
 async function enrichOtherFree(games){
   for(const g of games){
     const aj = g.analysis_json || {};
-    if(!Array.isArray(aj.injuries) || !aj.injuries.length) aj.injuries = [[g.home,'傷員狀況','目前未列入主要傷兵','無'],[g.away,'傷員狀況','目前未列入主要傷兵','無']];
-    if(!Array.isArray(aj.h2h) || !aj.h2h.length) aj.h2h = [['近期對戰',[g.home,'無'],[g.away,'無'],'無']];
+    if(!Array.isArray(aj.injuries) || !aj.injuries.length) aj.injuries = [[g.home,'傷員狀況','目前未列入主要傷兵','正常'],[g.away,'傷員狀況','目前未列入主要傷兵','正常']];
+    if(!Array.isArray(aj.h2h) || !aj.h2h.length) aj.h2h = [['近期對戰',[g.home,'資料整理中'],[g.away,'資料整理中'],'盤口前參考']];
     if(!Array.isArray(aj.recent) || !aj.recent.length) aj.recent = [{team:g.home,side:'客隊',items:[['近況',g.home,'資料中心整理中','-']]},{team:g.away,side:'主隊',items:[['近況',g.away,'資料中心整理中','-']]}];
     if(!Array.isArray(aj.metrics) || !aj.metrics.length) aj.metrics = genericMetrics(g,g.home,g.away);
     if(g.sport === 'basketball') {
@@ -254,7 +360,7 @@ async function enrichOtherFree(games){
       ];
     }
     if(g.sport === 'football') {
-      aj.football_summary = {home:`${g.away}：近期狀態資料整理中。`,away:`${g.home}：近期狀態資料整理中。`,conclusion:`獨贏：${safeMarketText(g.money)}；讓分：${safeMarketText(g.spread)}；大小分：${safeMarketText(g.total)}。目前以盤口方向與主客場條件做初步判斷。`};
+      aj.football_summary = {home:`${g.away}：近期狀態依盤口與主客場條件整理中。`,away:`${g.home}：近期狀態依盤口與主客場條件整理中。`,conclusion:`獨贏：${safeMarketText(g.money)}；讓分：${safeMarketText(g.spread)}；大小分：${safeMarketText(g.total)}。目前以盤口方向與主客場條件做初步判斷。`};
     }
     g.analysis_json = aj;
   }
@@ -269,7 +375,7 @@ async function supabase(path, options={}){
 }
 async function writeRaw(rows){
   try {
-    const run = await supabase('raw_sports_sync_runs', {method:'POST', headers:{Prefer:'return=representation'}, body:JSON.stringify([{source:'github_actions',version:'v76-display-stats',status:'success',total_games:rows.length,created_at:nowISO()}])});
+    const run = await supabase('raw_sports_sync_runs', {method:'POST', headers:{Prefer:'return=representation'}, body:JSON.stringify([{source:'github_actions',version:'v79-mlb-yahoo-official-stats',status:'success',total_games:rows.length,created_at:nowISO()}])});
     const runId = Array.isArray(run) && run[0]?.id;
     if(!runId) return;
     const rawRows = rows.map(g=>({run_id:runId,game_date:g.game_date,game_day_type:g.game_day_type,game_status:g.game_status,sport:g.sport,league:g.league,game_time:g.game_time,away:g.away,home:g.home,source_url:g.source_url,raw_text:g.raw_data?.raw_text||'',parsed_json:g,created_at:nowISO()}));
@@ -282,10 +388,10 @@ async function writeDaily(rows){
   await writeRaw(rows);
   await supabase(`daily_games?game_date=eq.${twDate(0)}`, {method:'PATCH', headers:{Prefer:'return=minimal'}, body:JSON.stringify({active:false,updated_at:nowISO()})}).catch(e=>console.warn('deactivate skipped:', e.message));
   if(rows.length) await supabase('daily_games?on_conflict=game_date,game_day_type,league,away,home,game_time', {method:'POST', headers:{Prefer:'resolution=merge-duplicates,return=minimal'}, body:JSON.stringify(rows.map(strip))});
-  await supabase('daily_sync_status', {method:'POST', headers:{Prefer:'return=minimal'}, body:JSON.stringify([{status:'success',message:`v76 synced ${rows.length} games`,games_count:rows.length,source:'v76-display-stats',created_at:nowISO()}])}).catch(()=>{});
+  await supabase('daily_sync_status', {method:'POST', headers:{Prefer:'return=minimal'}, body:JSON.stringify([{status:'success',message:`v79 synced ${rows.length} games`,games_count:rows.length,source:'v79-mlb-yahoo-official-stats',created_at:nowISO()}])}).catch(()=>{});
 }
 async function main(){
-  console.log(`v76 Taiwan date=${twDate(0)}`);
+  console.log(`v79 Taiwan date=${twDate(0)}`);
   let games = await scrapePlaySport();
   games = await enrichMLB(games);
   games = await enrichOtherFree(games);
