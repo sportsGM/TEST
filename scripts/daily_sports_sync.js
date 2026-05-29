@@ -88,7 +88,6 @@ function teamPerc(game, leftTeam, rightTeam, base=55){
   if(fav && fav === rightTeam) return [100-base, base];
   return [50,50];
 }
-function safeMarketText(v){ const x=String(v||'').trim(); return x && !/undefined|null/.test(x) ? x : '尚未開盤'; }
 function genericMetrics(game,trueAway,trueHome){
   const money = safeMarketText(game.money), spread = safeMarketText(game.spread), total = safeMarketText(game.total);
   const [mL,mR] = teamPerc(game, trueAway, trueHome, pctFromConfidence(game.confidence,0,56));
