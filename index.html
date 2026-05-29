@@ -2956,5 +2956,93 @@ setTimeout(v52LoadDailyGames, 350);
 setInterval(v52LoadDailyGames, 60*60*1000);
 </script>
 
+
+
+<script>
+/* ===== v81: MLB live official stats frontend fallback =====
+   Purpose: if Supabase analysis_json has no ERA/WHIP/win/loss, fetch MLB Stats API directly in browser and fill modal.
+*/
+(function(){
+  const MLB_TEAM_IDS_V81={
+    '響尾蛇':109,'亞利桑那':109,'勇士':144,'亞特蘭大':144,'金鶯':110,'巴爾的摩':110,'紅襪':111,'波士頓':111,
+    '小熊':112,'芝加哥小熊':112,'白襪':145,'芝加哥白襪':145,'紅人':113,'辛辛那提':113,'守護者':114,'克里夫蘭':114,
+    '洛磯':115,'科羅拉多':115,'老虎':116,'底特律':116,'太空人':117,'休士頓':117,'皇家':118,'堪薩斯':118,
+    '天使':108,'洛杉磯天使':108,'道奇':119,'洛杉磯道奇':119,'馬林魚':146,'邁阿密':146,'釀酒人':158,'密爾瓦基':158,
+    '雙城':142,'明尼蘇達':142,'大都會':121,'紐約大都會':121,'洋基':147,'紐約洋基':147,'運動家':133,'奧克蘭':133,'費城人':143,'費城':143,
+    '海盜':134,'匹茲堡':134,'教士':135,'聖地牙哥':135,'巨人':137,'舊金山':137,'水手':136,'西雅圖':136,
+    '紅雀':138,'聖路易':138,'光芒':139,'坦帕灣':139,'遊騎兵':140,'德州':140,'藍鳥':141,'多倫多':141,'國民':120,'華盛頓':120
+  };
+  const v81ScheduleCache={}, v81PitcherCache={}, v81EnrichedKeys=new Set();
+  function v81TWDate(offset=0){ const d=new Date(); d.setDate(d.getDate()+offset); return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).format(d); }
+  function v81Clean(s){return String(s||'').replace(/隊$/,'').replace(/\s+/g,'').trim();}
+  function v81TeamId(name){ const n=v81Clean(name); if(MLB_TEAM_IDS_V81[n]) return MLB_TEAM_IDS_V81[n]; for(const [k,v] of Object.entries(MLB_TEAM_IDS_V81)){ if(n.includes(k)||k.includes(n)) return v; } return null; }
+  async function v81Json(url){ const r=await fetch(url,{headers:{'Accept':'application/json'}}); if(!r.ok) throw new Error('MLB API '+r.status); return r.json(); }
+  async function v81Schedule(date){ if(v81ScheduleCache[date]) return v81ScheduleCache[date]; const url=`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${date}&hydrate=probablePitcher,team,linescore`; const j=await v81Json(url); return v81ScheduleCache[date]=(j.dates||[]).flatMap(d=>d.games||[]); }
+  async function v81PitcherStats(id){
+    if(!id) return null; if(v81PitcherCache[id]) return v81PitcherCache[id];
+    const season=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Taipei',year:'numeric'}).format(new Date());
+    const j=await v81Json(`https://statsapi.mlb.com/api/v1/people/${id}/stats?stats=season&group=pitching&season=${season}`);
+    const st=j?.stats?.[0]?.splits?.[0]?.stat||{};
+    const out={era:String(st.era??'無'),whip:String(st.whip??'無'),wins:String(st.wins??'0'),losses:String(st.losses??'0'),games:String(st.gamesPlayed??'無'),strikeOuts:String(st.strikeOuts??'無')};
+    return v81PitcherCache[id]=out;
+  }
+  function v81PitcherBlock(team,name,role,st){ return {team,name:name||'無',role,stats:[['ERA',st?.era??'無'],['WHIP',st?.whip??'無'],['勝投',st?.wins??'0'],['敗投',st?.losses??'0'],['近況',st?`本季 ${st.games||'無'} 場，三振 ${st.strikeOuts||'無'}`:'無']]}; }
+  function v81IsEmptyMlbStats(g){
+    const sts=(g?.analysis_json?.starters||[]).flatMap(x=>x.stats||[]).map(x=>String(x[1]||''));
+    return !sts.length || sts.some(v=>/資料整理中|待更新/.test(v));
+  }
+  async function v81FindOfficialGame(g){
+    const aj=g.analysis_json||{};
+    const trueAway=aj.true_away||g.home;   // original MLB visitor
+    const trueHome=aj.true_home||g.away;   // original MLB home, displayed first
+    const awayId=v81TeamId(trueAway), homeId=v81TeamId(trueHome);
+    if(!awayId||!homeId) return null;
+    const dates=[v81TWDate(0),v81TWDate(1),v81TWDate(-1)];
+    for(const date of dates){
+      const list=await v81Schedule(date);
+      const match=list.find(x=>{
+        const a=x?.teams?.away?.team?.id, h=x?.teams?.home?.team?.id;
+        return (a===awayId&&h===homeId)||(a===homeId&&h===awayId);
+      });
+      if(match) return {match,trueAway,trueHome,date};
+    }
+    return null;
+  }
+  async function v81EnrichCurrentMlbGame(i,tab){
+    try{
+      if(tab!=='data' || state.league!=='MLB') return;
+      const g=(games[state.league]||[])[i]; if(!g || g.league!=='MLB') return;
+      const key=[g.game_day_type||'',g.time,g.away,g.home].join('|');
+      if(v81EnrichedKeys.has(key) || !v81IsEmptyMlbStats(g)) return;
+      v81EnrichedKeys.add(key);
+      const body=document.getElementById('modalBody');
+      if(body) body.insertAdjacentHTML('afterbegin','<div id="v81MlbLoading" class="soft rounded-2xl p-3 text-emerald-300 font-black text-sm mb-3">MLB官方投手數據同步中...</div>');
+      const found=await v81FindOfficialGame(g);
+      if(!found){ document.getElementById('v81MlbLoading')?.remove(); return; }
+      const off=found.match;
+      const ap=off.teams?.away?.probablePitcher||null, hp=off.teams?.home?.probablePitcher||null;
+      const as=await v81PitcherStats(ap?.id), hs=await v81PitcherStats(hp?.id);
+      const awayRec=off.teams?.away?.leagueRecord?`${off.teams.away.leagueRecord.wins}勝${off.teams.away.leagueRecord.losses}敗`:'無';
+      const homeRec=off.teams?.home?.leagueRecord?`${off.teams.home.leagueRecord.wins}勝${off.teams.home.leagueRecord.losses}敗`:'無';
+      g.analysis_json={...(g.analysis_json||{})};
+      g.analysis_json.starters=[v81PitcherBlock(found.trueHome,hp?.fullName||'無','主隊先發',hs),v81PitcherBlock(found.trueAway,ap?.fullName||'無','客隊先發',as)];
+      g.analysis_json.metrics=[['球隊戰績',awayRec,homeRec,50,50,awayRec,homeRec],['先發ERA',as?.era??'無',hs?.era??'無',50,50,ap?.fullName||'無',hp?.fullName||'無'],['先發WHIP',as?.whip??'無',hs?.whip??'無',50,50,'官方投手數據','官方投手數據'],['盤口方向',g.money||'尚未開盤',g.spread||'尚未開盤',Array.isArray(g.conf)?g.conf[0]||55:55,Array.isArray(g.conf)?g.conf[1]||55:55,g.money||'尚未開盤',g.spread||'尚未開盤']];
+      g.analysis_json.injuries=[[found.trueAway,'傷員狀況','目前未列入主要傷兵','正常'],[found.trueHome,'傷員狀況','目前未列入主要傷兵','正常']];
+      g.analysis_json.h2h=[['近期對戰',[found.trueAway,awayRec],[found.trueHome,homeRec],'以本季戰績與本場先發投手做賽前參考']];
+      g.analysis_json.recent=[{team:found.trueAway,side:'客隊',items:[['近況',found.trueAway,awayRec,'官方戰績'],['先發',ap?.fullName||'無',as?`ERA ${as.era} / WHIP ${as.whip}`:'無','投手']]},{team:found.trueHome,side:'主隊',items:[['近況',found.trueHome,homeRec,'官方戰績'],['先發',hp?.fullName||'無',hs?`ERA ${hs.era} / WHIP ${hs.whip}`:'無','投手']]}];
+      document.getElementById('v81MlbLoading')?.remove();
+      if(currentGameIndex===i && state.league==='MLB') v81OriginalOpenGame(i,tab);
+    }catch(e){ console.warn('v81 MLB frontend enrichment failed',e); document.getElementById('v81MlbLoading')?.remove(); }
+  }
+  if(typeof v52NormalizeDailyGame==='function'){
+    const oldNorm=v52NormalizeDailyGame;
+    v52NormalizeDailyGame=function(r){ const g=oldNorm(r); g.game_date=r.game_date||''; g.game_day_type=r.game_day_type||''; g.game_status=r.game_status||''; g.league=r.league||g.league; return g; };
+  }
+  const v81OriginalOpenGame=openGame;
+  window.v81OriginalOpenGame=v81OriginalOpenGame;
+  openGame=function(i,tab='data'){ v81OriginalOpenGame(i,tab); setTimeout(()=>v81EnrichCurrentMlbGame(i,tab),80); };
+})();
+</script>
+
 </body>
 </html>
