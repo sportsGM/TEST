@@ -2,8 +2,8 @@
 // This file is safe to publish because it only contains the Supabase project URL
 // and publishable key. Never put the secret/service_role key in frontend code.
 window.SPORTS_SITE_CONFIG = {
-  SUPABASE_URL: "https://azubzmuavfstxwzmrjvn.supabase.co",
-  SUPABASE_PUBLISHABLE_KEY: "sb_publishable_H_-C5OoepO44jsXW9dr03g_PSvh6-Cc",
+  SUPABASE_URL: "https://jrkcdklybgnnmgwdrelm.supabase.co",
+  SUPABASE_PUBLISHABLE_KEY: "sb_publishable_AiJa0JlNL6E9J70IxE0xeg_CBe7Mj-A",
   PAOGE_DOMAIN: "paoge.sports.com",
   LONGNV_DOMAIN: "yao88.sports.com",
   PAOGE_BET_URL: "https://money888.mw168.online",
