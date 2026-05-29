@@ -1,4 +1,4 @@
-name: Hourly sports sync v75
+name: Hourly sports sync v76
 
 on:
   schedule:
@@ -8,21 +8,17 @@ on:
 jobs:
   sync:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-
       - name: Install dependencies
         run: |
           npm install
           npx playwright install chromium --with-deps
-
       - name: Run sports sync
         run: npm run sync:sports
         env:
