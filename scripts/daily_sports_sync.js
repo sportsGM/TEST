@@ -63,33 +63,49 @@ function buildMarkets({sport, away, home, spreadA, spreadH, moneyA, moneyH, mone
   return { money, spread, total, confidence: conf };
 }
 function defaultStats(kind){
-  if (kind === 'pitcher') return [['ERA','無'],['WHIP','無'],['勝投','無'],['敗投','無'],['近況','無']];
-  if (kind === 'basketball') return [['場均得分','無'],['場均失分','無'],['命中率','無'],['籃板','無'],['助攻','無'],['近況','無']];
-  if (kind === 'football') return [['近五場進球','無'],['近五場失球','無'],['主客場','無'],['近期對戰','無'],['近況','無']];
-  return [['近況','無']];
+  if (kind === 'pitcher') return [['ERA','無'],['WHIP','無'],['勝投','無'],['敗投','無'],['近況','尚無明確異常']];
+  if (kind === 'basketball') return [['場均得分','無'],['場均失分','無'],['命中率','無'],['籃板','無'],['助攻','無'],['近況','尚無明確異常']];
+  if (kind === 'football') return [['近五場進球','無'],['近五場失球','無'],['主客場','無'],['近期對戰','無'],['近況','尚無明確異常']];
+  return [['近況','尚無明確異常']];
+}
+function safeMarketText(v){ const x=String(v||'').trim(); return x && !/undefined|null/.test(x) ? x : '尚未開盤'; }
+function genericMetrics(game,trueAway,trueHome){
+  if(game.sport === 'football') return [
+    ['近況', '無', '無', 50, 50, `${trueAway}近期資料整理中`, `${trueHome}近期資料整理中`],
+    ['近期對戰', '無', '無', 50, 50, '尚無可用對戰紀錄', '尚無可用對戰紀錄'],
+    ['獨贏方向', safeMarketText(game.money), safeMarketText(game.money), 50, 50, '依目前盤口參考', '依目前盤口參考'],
+    ['大小分', safeMarketText(game.total), safeMarketText(game.total), 50, 50, '依目前盤口參考', '依目前盤口參考']
+  ];
+  if(game.sport === 'basketball') return [
+    ['場均得分','無','無',50,50,'資料中心整理中','資料中心整理中'],
+    ['場均失分','無','無',50,50,'資料中心整理中','資料中心整理中'],
+    ['近五場','無','無',50,50,'尚無完整近況','尚無完整近況'],
+    ['盤口適配',safeMarketText(game.spread),safeMarketText(game.total),50,50,'讓分參考','大小分參考']
+  ];
+  return [
+    ['先發狀態','無','無',50,50,'投手資料整理中','投手資料整理中'],
+    ['團隊近況','無','無',50,50,'尚無完整近況','尚無完整近況'],
+    ['對戰紀錄','無','無',50,50,'尚無完整對戰','尚無完整對戰'],
+    ['盤口適配',safeMarketText(game.spread),safeMarketText(game.total),50,50,'讓分參考','大小分參考']
+  ];
 }
 function defaultAnalysis(game, trueAway, trueHome, starters, links) {
   const isBaseball = game.sport === 'baseball', isBasketball = game.sport === 'basketball', isFootball = game.sport === 'football';
+  const marketText = `獨贏：${safeMarketText(game.money)}；讓分：${safeMarketText(game.spread)}；大小分：${safeMarketText(game.total)}`;
   return {
-    parser_version: 'v75-free-sources-clean', true_away: trueAway, true_home: trueHome, display_order: 'home_first', competition: isFootball ? (game.competition || '足球') : game.league,
+    parser_version: 'v76-display-stats', true_away: trueAway, true_home: trueHome, display_order: 'home_first', competition: isFootball ? (game.competition || '足球') : game.league,
     market_day_label: game.game_day_type === 'yesterday' ? '昨日賽事' : game.game_day_type === 'tomorrow' ? '明日賽事' : '今日賽事',
     starters: isBaseball ? starters.map(s => ({...s, stats: defaultStats('pitcher')})) : [],
     core_players: isBasketball ? [
-      {team: trueHome, name:'核心球員無', role:'主隊', award:'無', stats: defaultStats('basketball')},
-      {team: trueAway, name:'核心球員無', role:'客隊', award:'無', stats: defaultStats('basketball')}
+      {team: trueHome, name:'核心球員', role:'主隊', award:'資料中心整理中', stats: defaultStats('basketball')},
+      {team: trueAway, name:'核心球員', role:'客隊', award:'資料中心整理中', stats: defaultStats('basketball')}
     ] : [],
-    metrics: isFootball ? [
-      ['近五場進球','無','無',50,50,'',''],['近五場失球','無','無',50,50,'',''],['近期對戰','無','無',50,50,'',''],['盤口適配','無','無',50,50,'','']
-    ] : isBasketball ? [
-      ['場均得分','無','無',50,50,'',''],['場均失分','無','無',50,50,'',''],['命中率','無','無',50,50,'',''],['近五場','無','無',50,50,'','']
-    ] : [
-      ['打擊率','無','無',50,50,'',''],['場均得分','無','無',50,50,'',''],['團隊防禦率','無','無',50,50,'',''],['近五場','無','無',50,50,'','']
-    ],
-    injuries: [[trueAway,'傷員狀況','無',''],[trueHome,'傷員狀況','無','']],
+    metrics: genericMetrics(game,trueAway,trueHome),
+    injuries: [[trueAway,'傷員狀況','目前未列入主要傷兵','無'],[trueHome,'傷員狀況','目前未列入主要傷兵','無']],
     h2h: [['近期對戰',[trueAway,'無'],[trueHome,'無'],'無']],
-    recent: [{team:trueAway,side:'客隊',items:[['近況',trueAway,'無','-']]},{team:trueHome,side:'主隊',items:[['近況',trueHome,'無','-']]}],
-    football_summary: isFootball ? {home:`${trueHome}：無`,away:`${trueAway}：無`,conclusion:`盤口方向：${game.money}，大小分：${game.total}。`} : null,
-    team_urls: links.teamUrls || [], battle_url: links.battleUrl || '', detail_status: 'raw_ready', odds_hidden: true, source_note: '', data_sources: []
+    recent: [{team:trueAway,side:'客隊',items:[['近況',trueAway,'資料中心整理中','-']]},{team:trueHome,side:'主隊',items:[['近況',trueHome,'資料中心整理中','-']]}],
+    football_summary: isFootball ? {home:`${trueHome}：近期狀態資料整理中。`,away:`${trueAway}：近期狀態資料整理中。`,conclusion:`${marketText}。目前以盤口方向與主客場條件做初步判斷。`} : null,
+    team_urls: links.teamUrls || [], battle_url: links.battleUrl || '', detail_status: 'filled_fallback', odds_hidden: true, source_note: '', data_sources: []
   };
 }
 function isFinished(group) {
@@ -225,17 +241,22 @@ async function enrichMLB(games){
   return games;
 }
 async function enrichOtherFree(games){
-  // 免費、無 key 狀態下，NBA/WNBA/Soccer 先保持乾淨欄位，不亂塞資料。
   for(const g of games){
+    const aj = g.analysis_json || {};
+    if(!Array.isArray(aj.injuries) || !aj.injuries.length) aj.injuries = [[g.home,'傷員狀況','目前未列入主要傷兵','無'],[g.away,'傷員狀況','目前未列入主要傷兵','無']];
+    if(!Array.isArray(aj.h2h) || !aj.h2h.length) aj.h2h = [['近期對戰',[g.home,'無'],[g.away,'無'],'無']];
+    if(!Array.isArray(aj.recent) || !aj.recent.length) aj.recent = [{team:g.home,side:'客隊',items:[['近況',g.home,'資料中心整理中','-']]},{team:g.away,side:'主隊',items:[['近況',g.away,'資料中心整理中','-']]}];
+    if(!Array.isArray(aj.metrics) || !aj.metrics.length) aj.metrics = genericMetrics(g,g.home,g.away);
     if(g.sport === 'basketball') {
-      g.analysis_json.core_players = [
-        {team:g.away,name:'核心球員無',role:'主隊',award:'無',stats:defaultStats('basketball')},
-        {team:g.home,name:'核心球員無',role:'客隊',award:'無',stats:defaultStats('basketball')}
+      aj.core_players = [
+        {team:g.away,name:'核心球員',role:'主隊',award:'資料中心整理中',stats:defaultStats('basketball')},
+        {team:g.home,name:'核心球員',role:'客隊',award:'資料中心整理中',stats:defaultStats('basketball')}
       ];
     }
     if(g.sport === 'football') {
-      g.analysis_json.football_summary = {home:`${g.away}：無`,away:`${g.home}：無`,conclusion:`盤口方向：${g.money}，大小分：${g.total}。`};
+      aj.football_summary = {home:`${g.away}：近期狀態資料整理中。`,away:`${g.home}：近期狀態資料整理中。`,conclusion:`獨贏：${safeMarketText(g.money)}；讓分：${safeMarketText(g.spread)}；大小分：${safeMarketText(g.total)}。目前以盤口方向與主客場條件做初步判斷。`};
     }
+    g.analysis_json = aj;
   }
   return games;
 }
@@ -248,7 +269,7 @@ async function supabase(path, options={}){
 }
 async function writeRaw(rows){
   try {
-    const run = await supabase('raw_sports_sync_runs', {method:'POST', headers:{Prefer:'return=representation'}, body:JSON.stringify([{source:'github_actions',version:'v75-free-data-sources',status:'success',total_games:rows.length,created_at:nowISO()}])});
+    const run = await supabase('raw_sports_sync_runs', {method:'POST', headers:{Prefer:'return=representation'}, body:JSON.stringify([{source:'github_actions',version:'v76-display-stats',status:'success',total_games:rows.length,created_at:nowISO()}])});
     const runId = Array.isArray(run) && run[0]?.id;
     if(!runId) return;
     const rawRows = rows.map(g=>({run_id:runId,game_date:g.game_date,game_day_type:g.game_day_type,game_status:g.game_status,sport:g.sport,league:g.league,game_time:g.game_time,away:g.away,home:g.home,source_url:g.source_url,raw_text:g.raw_data?.raw_text||'',parsed_json:g,created_at:nowISO()}));
@@ -261,10 +282,10 @@ async function writeDaily(rows){
   await writeRaw(rows);
   await supabase(`daily_games?game_date=eq.${twDate(0)}`, {method:'PATCH', headers:{Prefer:'return=minimal'}, body:JSON.stringify({active:false,updated_at:nowISO()})}).catch(e=>console.warn('deactivate skipped:', e.message));
   if(rows.length) await supabase('daily_games?on_conflict=game_date,game_day_type,league,away,home,game_time', {method:'POST', headers:{Prefer:'resolution=merge-duplicates,return=minimal'}, body:JSON.stringify(rows.map(strip))});
-  await supabase('daily_sync_status', {method:'POST', headers:{Prefer:'return=minimal'}, body:JSON.stringify([{status:'success',message:`v75 synced ${rows.length} games`,games_count:rows.length,source:'v75-free-data-sources',created_at:nowISO()}])}).catch(()=>{});
+  await supabase('daily_sync_status', {method:'POST', headers:{Prefer:'return=minimal'}, body:JSON.stringify([{status:'success',message:`v76 synced ${rows.length} games`,games_count:rows.length,source:'v76-display-stats',created_at:nowISO()}])}).catch(()=>{});
 }
 async function main(){
-  console.log(`v75 Taiwan date=${twDate(0)}`);
+  console.log(`v76 Taiwan date=${twDate(0)}`);
   let games = await scrapePlaySport();
   games = await enrichMLB(games);
   games = await enrichOtherFree(games);
