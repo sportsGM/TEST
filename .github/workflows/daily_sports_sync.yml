@@ -1,4 +1,4 @@
-name: Hourly sports sync v79
+name: Hourly sports sync v80
 
 on:
   schedule:
